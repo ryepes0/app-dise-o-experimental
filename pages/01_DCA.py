@@ -17,6 +17,13 @@ from utils.anova_utils import (
 	tukey,
 	validar_dca,
 )
+from utils.diagnostico_utils import (
+	grafico_qq,
+	grafico_residuos_vs_ajustados,
+	prueba_levene,
+	prueba_shapiro,
+	residuos_y_ajustados,
+)
 
 
 RUTA_EJEMPLO = Path(__file__).resolve().parents[1] / "data" / "dca_secadores.csv"
@@ -122,8 +129,15 @@ fila_tratamientos = tabla.loc[tabla["Fuente"] == "Tratamientos"].iloc[0]
 p_valor = float(fila_tratamientos["p-valor"])
 
 cv = coeficiente_variacion(modelo, datos, col_resp)
+resumen_diagnostico = residuos_y_ajustados(modelo)
+estadistico_shapiro, p_shapiro, conclusion_shapiro = prueba_shapiro(
+	resumen_diagnostico["Residuo"], alfa
+)
+estadistico_levene, p_levene, conclusion_levene = prueba_levene(
+	datos, col_trat, col_resp, alfa
+)
 
-pestanas = st.tabs(["Datos", "ANOVA", "Comparaciones", "Gráficos"])
+pestanas = st.tabs(["Datos", "ANOVA", "Comparaciones", "Gráficos", "Supuestos"])
 
 with pestanas[0]:
 	st.subheader("Datos del experimento")
@@ -180,3 +194,51 @@ with pestanas[3]:
 		labels={"Tratamiento": "Tratamiento", "media": "Media de la respuesta"},
 	)
 	st.plotly_chart(grafico_medias, width="stretch")
+
+with pestanas[4]:
+	st.subheader("Diagnóstico de supuestos")
+	columna_residuos, columna_qq = st.columns(2)
+	with columna_residuos:
+		st.plotly_chart(
+			grafico_residuos_vs_ajustados(resumen_diagnostico),
+			width="stretch",
+		)
+	with columna_qq:
+		st.plotly_chart(
+			grafico_qq(resumen_diagnostico["Residuo"]),
+			width="stretch",
+		)
+
+	tabla_supuestos = pd.DataFrame(
+		[
+			{
+				"Prueba": "Shapiro-Wilk",
+				"Estadístico": estadistico_shapiro,
+				"p-valor": p_shapiro,
+				"Conclusión": conclusion_shapiro,
+			},
+			{
+				"Prueba": "Levene (mediana)",
+				"Estadístico": estadistico_levene,
+				"p-valor": p_levene,
+				"Conclusión": conclusion_levene,
+			},
+		]
+	)
+	st.dataframe(
+		tabla_supuestos.style.format(
+			{"Estadístico": "{:.4f}", "p-valor": "{:.4f}"},
+			na_rep="No disponible",
+		),
+		hide_index=True,
+		width="stretch",
+	)
+
+	st.markdown(
+		"- **Normalidad:** Shapiro-Wilk evalúa si los residuos son compatibles con "
+		"una distribución normal.\n"
+		"- **Homogeneidad de varianzas:** Levene, centrada en la mediana, evalúa si "
+		"la variabilidad de la respuesta es similar entre tratamientos.\n"
+		"- **Independencia:** no se confirma con estas pruebas; debe sustentarse en "
+		"la asignación aleatoria de las unidades experimentales."
+	)
